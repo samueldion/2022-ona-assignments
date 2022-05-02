@@ -1,9 +1,12 @@
 ---
 title: "hello-ona"
-output: github_document
+author: "Samuel Dion"
+output:
+  pdf_document: default
+  github_document: default
 ---
 
-```{r setup}
+```{r setup, include=FALSE}
 library(tidyverse)
 library(igraph)
 ```
@@ -12,4 +15,5 @@ library(igraph)
 print("Hello, network!")
 
 ```
+
 
