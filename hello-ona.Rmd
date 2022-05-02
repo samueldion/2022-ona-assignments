@@ -1,9 +1,9 @@
 ---
 title: "hello-ona"
-output: html_document
+output: github_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
 library(tidyverse)
 library(igraph)
 ```
