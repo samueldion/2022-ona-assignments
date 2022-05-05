@@ -1,39 +1,27 @@
----
-title: "Exercise 1 - LinkedIn Contacts"
-author: "Samuel"
-date: "`r Sys.Date()`"
-output: 
-  github_document: default
-  pdf_document: default
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-
-# Libraries
-library(tidyverse)
-library(igraph)
-library(janitor)
-library(stringi)
-```
+Exercise 1 - LinkedIn Contacts
+================
+Samuel
+2022-05-04
 
 # Check the data
 
-```{r}
+``` r
 df <- read.csv("linkedin_connections.csv", skip = 3)
 
 df <- clean_names(df)
 
 df <- df %>% 
   select(-c("email_address"))
-
 ```
 
 # Standardize the name of the companies
 
-There are still some duplicates with inc. or canada. A more systematic way by using the companies name resemblance could be used but that's not the goal of this project and most of the duplicates were fixed by doing these simple fix.
+There are still some duplicates with inc. or canada. A more systematic
+way by using the companies name resemblance could be used but that’s not
+the goal of this project and most of the duplicates were fixed by doing
+these simple fix.
 
-```{r}
+``` r
 # Lower case company name
 df <- 
   df %>% 
@@ -66,7 +54,7 @@ df <- df %>%
 
 # Get the count of contacts by company
 
-```{r}
+``` r
 count <- df %>% 
   group_by(company) %>% 
   count() %>% 
@@ -80,52 +68,50 @@ count %>% arrange(desc(n)) %>% head(20) %>%
     y = "Companies",
     title = "Top 20 companies of my connections"
   )
-
-
 ```
+
+![](exercise1_linkedin_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
 
 # Get the total count
 
-```{r}
+``` r
 total_count = sum(count$n)
 print(c("Total connections = ", total_count))
-
 ```
+
+    ## [1] "Total connections = " "278"
 
 # Create the graph
 
 ## Create a column with the first and last name
 
-```{r}
+``` r
 df <- df %>% 
   unite(name, c("first_name", "last_name"))
-
 ```
 
 ## Remove the unknown company contacts from the network
-```{r}
+
+``` r
 df <- df %>% filter(company!="unknown")
-
-
 ```
 
-
 ## Create the nodes
-```{r}
+
+``` r
 nodes <- df %>% select(c("name", "company"))
 
 nodes <- nodes %>% rowid_to_column("id")
 
 # PRIVACY
 #nodes %>% head(10)
-
 ```
 
 ## Create the edges
-Left join the id of the contact's name with the same company name
 
-```{r}
+Left join the id of the contact’s name with the same company name
 
+``` r
 edges <- df %>% select(c(name, company)) %>% 
   left_join(nodes %>% select(c(id,name)), by = c("name"="name"))
 
@@ -136,26 +122,50 @@ edges <- edges %>% left_join(edges, by = "company", keep=FALSE) %>%
 colnames(edges) <- c("x", "y", "company")
 
 edges %>% head(10)
-
 ```
 
+    ##    x   y                 company
+    ## 1  2  95                      cn
+    ## 2  6  34             air transat
+    ## 3  6 101             air transat
+    ## 4  7  21 keurig dr pepper canada
+    ## 5  8  16                  mcgill
+    ## 6  8  52                  mcgill
+    ## 7  8  58                  mcgill
+    ## 8  8  61                  mcgill
+    ## 9  8  65                  mcgill
+    ## 10 8  67                  mcgill
+
 ## Create the graph
-```{r}
+
+``` r
 library(tidygraph)
+```
+
+    ## 
+    ## Attaching package: 'tidygraph'
+
+    ## The following object is masked from 'package:igraph':
+    ## 
+    ##     groups
+
+    ## The following object is masked from 'package:stats':
+    ## 
+    ##     filter
+
+``` r
 library(ggraph)
 
 graph <- tbl_graph(edges = edges, nodes=nodes, directed = FALSE)
-
-
 ```
 
-
 ## Plot the resulting full graph
-```{r}
+
+``` r
 ggraph(graph, layout = "graphopt") + 
   geom_edge_link(aes(color = company), show.legend = FALSE) + 
   geom_node_point()+
   theme_graph()
-
 ```
 
+![](exercise1_linkedin_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
