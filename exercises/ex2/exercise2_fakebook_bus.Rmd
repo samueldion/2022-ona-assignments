@@ -1,0 +1,94 @@
+---
+title: "Exercise 2 - Fakebook Bus"
+author: "Samuel"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document: default
+  github_document: default
+---
+# References
+https://mr.schochastics.net/material/netvizr/
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(tidygraph)
+library(igraph)
+library(ggraph)
+
+```
+
+# Objective
+The goal of this exercise is to find the optimal position to sit in the bus.
+
+We'll look at the network of the people in the bus.
+
+
+# Creating the dataset
+## Nodes
+```{r}
+nodes <- data.frame(Nodes = c(1,2,3,4,5,6,"A","B","C","D"))
+nodes %>% head()
+
+```
+
+## Edges
+For simplicity, those were created manually in Excel because it was easier to do
+compared to in R.
+```{r}
+edges <- readxl::read_excel("ex2_edges.xlsx")
+edges %>% head()
+
+```
+
+# Creating the graph
+```{r}
+graph <- tbl_graph(edges = edges, nodes=nodes, directed = FALSE)
+autograph(graph)
+
+```
+
+## Visualize
+igraph_layouts <- c('star', 'circle', 'gem', 'dh', 'graphopt', 'grid', 'mds', 
+                    'randomly', 'fr', 'kk', 'drl', 'lgl')
+                    
+### Computing different parameters for the Network Graph
+```{r}
+# Clustering for node colors:
+V(graph)$clu <- as.character(membership(cluster_louvain(graph)))
+
+# Degree for node size
+V(graph)$size <- degree(graph)
+
+```
+                    
+                    
+### Plot the results
+```{r}
+ggraph(graph, layout = "stress") +
+  geom_edge_link(color = "grey66") +
+  geom_node_point(
+    aes(fill = clu, size = size),
+    shape = 21,
+    ) +
+  scale_fill_brewer(palette = "Dark2", na.value = "gray53") +
+  geom_node_text(
+    aes(label = Nodes),
+    colour = "#000000",
+    size = 5,
+    repel = TRUE,
+  ) +
+  theme_graph() +
+  theme(legend.position = "none") +
+  labs(title="Fakebook Bus Network")
+
+```
+# Conclusion
+While the connection centrality clearly advantage B and D and therefore the 
+intern should choose between these two.  From my point of view, it would be 
+advantageous for the intern to sit on B, because it has the advantage of being
+connecting with the 3 groups clusters.  Seat D is really far from the (A,2,1).
