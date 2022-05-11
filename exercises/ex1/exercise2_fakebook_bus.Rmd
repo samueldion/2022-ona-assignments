@@ -1,0 +1,69 @@
+---
+title: "Exercise 2 - Fakebook Bus"
+author: "Samuel"
+date: "`r Sys.Date()`"
+output: 
+  pdf_document: default
+  github_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(igraph)
+library(janitor)
+
+```
+
+# Objective
+The goal of this exercise is to find the optimal solution to sit in the bus.
+
+
+
+
+
+# Check the data
+```{r}
+df <- read.csv("linkedin_connections.csv", skip = 3)
+
+df <- clean_names(df)
+
+df <- df %>% 
+  select(-c("email_address"))
+
+df
+
+```
+
+
+
+
+
+# Standardize the name of the company
+```{r}
+df$company <- df %>% 
+  select(company) %>% 
+  str_to_lower(.)
+  
+
+df
+```
+
+
+
+# Get the count of countact by companys
+```{r}
+df %>% 
+  group_by(company) %>% 
+  count() %>% 
+  arrange(desc(n))
+  
+
+
+
+```
+
+
