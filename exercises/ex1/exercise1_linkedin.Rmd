@@ -3,8 +3,8 @@ title: "Exercise 1 - LinkedIn Contacts"
 author: "Samuel"
 date: "`r Sys.Date()`"
 output: 
-  github_document: default
   pdf_document: default
+  github_document: default
 ---
 
 ```{r setup, include=FALSE}
