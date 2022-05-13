@@ -3,8 +3,8 @@ title: "Exercise 2 - Fakebook Bus"
 author: "Samuel"
 date: "`r Sys.Date()`"
 output: 
-  pdf_document: default
   github_document: default
+  pdf_document: default
 editor_options: 
   markdown: 
     wrap: 72
@@ -119,6 +119,7 @@ ggraph(graph, layout = "stress") +
     colour = "#000000",
     size = 5,
     repel = TRUE,
+    family= "arial"
   ) +
   theme_graph() +
   theme(legend.position = "none",
@@ -151,6 +152,7 @@ ggraph(graph, layout = "stress") +
     colour = "#000000",
     size = 5,
     repel = TRUE,
+    family= "arial"
   ) +
   theme_graph() +
   theme(legend.position = "none",

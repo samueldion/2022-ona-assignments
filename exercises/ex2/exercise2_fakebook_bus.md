@@ -119,6 +119,7 @@ ggraph(graph, layout = "stress") +
     colour = "#000000",
     size = 5,
     repel = TRUE,
+    family= "arial"
   ) +
   theme_graph() +
   theme(legend.position = "none",
@@ -128,6 +129,9 @@ ggraph(graph, layout = "stress") +
 
     ## Warning in grid.Call(C_stringMetric, as.graphicsAnnot(x$label)): font family not
     ## found in Windows font database
+
+    ## Warning in grid.Call(C_textBounds, as.graphicsAnnot(x$label), x$x, x$y, : font
+    ## family not found in Windows font database
 
     ## Warning in grid.Call(C_textBounds, as.graphicsAnnot(x$label), x$x, x$y, : font
     ## family not found in Windows font database
@@ -161,12 +165,16 @@ ggraph(graph, layout = "stress") +
     colour = "#000000",
     size = 5,
     repel = TRUE,
+    family= "arial"
   ) +
   theme_graph() +
   theme(legend.position = "none",
         plot.title = element_text(size=12)) +
   labs(title="Fakebook Bus Network - Betweenness Centrality as Node Size")
 ```
+
+    ## Warning in grid.Call(C_textBounds, as.graphicsAnnot(x$label), x$x, x$y, : font
+    ## family not found in Windows font database
 
     ## Warning in grid.Call(C_textBounds, as.graphicsAnnot(x$label), x$x, x$y, : font
     ## family not found in Windows font database
