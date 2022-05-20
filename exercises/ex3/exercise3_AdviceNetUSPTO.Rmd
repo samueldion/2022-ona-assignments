@@ -1,0 +1,373 @@
+---
+title: "Exercise 3 - Advice Network at USPTO"
+author: "Samuel"
+date: '2022-05-18'
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidygraph)
+library(lubridate)
+library(arrow)
+```
+
+## Instructions
+
+1.  Load the files and add the following variables for examiners:
+- Gender 
+- Race
+- Tenure
+
+2.  Pick two workgroups you want to focus on (remember that a workgroup
+    is represented by the first 3 digits of `examiner_art_unit` value)
+    - How do they compare on examiners' demographics? Show summary
+    statistics and plots.
+
+3.  Create advice networks from `edges_sample` and calculate centrality
+    scores for examiners in your selected workgroups
+
+-   Pick measure(s) of centrality you want to use and justify your
+    choice
+-   Characterize and discuss the relationship between centrality and
+    other examiners' characteristics
+
+2.  Any types of visuals to understand the data. Look for tendencies.
+
+<https://github.com/romangalperin/2022-ona-assignments/blob/main/exercises/ex3/exercise3.md>
+
+
+## Load data
+
+Load the following data: + applications from `app_data_sample.parquet` +
+edges from `edges_sample.csv`
+
+```{r load-data, include=F}
+# change to your own path!
+
+applications <- read_parquet("../../project/app_data_sample.parquet")
+edges <- read_csv("../../project/edges_sample.csv")
+
+applications
+edges
+```
+
+
+
+
+
+
+
+
+
+## Get gender for examiners
+
+We'll get gender based on the first name of the examiner, which is
+recorded in the field `examiner_name_first`. We'll use library `gender`
+for that, relying on a modified version of their own
+[example](https://cran.r-project.org/web/packages/gender/vignettes/predicting-gender.html).
+
+Note that there are over 2 million records in the applications table --
+that's because there are many records for each examiner, as many as the
+number of applications that examiner worked on during this time frame.
+Our first step therefore is to get all *unique* names in a separate list
+`examiner_names`. We will then guess gender for each one and will join
+this table back to the original dataset. So, let's get names without
+repetition:
+
+```{r gender-1}
+library(gender)
+#install_genderdata_package() # only run this line the first time you use the package, to get data for it
+
+# get a list of first names without repetitions
+examiner_names <- applications %>% 
+  distinct(examiner_name_first)
+
+examiner_names
+```
+
+Now let's use function `gender()` as shown in the example for the
+package to attach a gender and probability to each name and put the
+results into the table `examiner_names_gender`
+
+```{r gender-2}
+# get a table of names and gender
+examiner_names_gender <- examiner_names %>% 
+  do(results = gender(.$examiner_name_first, method = "ssa")) %>% 
+  unnest(cols = c(results), keep_empty = TRUE) %>% 
+  select(
+    examiner_name_first = name,
+    gender,
+    proportion_female
+  )
+
+examiner_names_gender
+```
+
+Finally, let's join that table back to our original applications data
+and discard the temporary tables we have just created to reduce clutter
+in our environment.
+
+```{r gender-3}
+# remove extra colums from the gender table
+examiner_names_gender <- examiner_names_gender %>% 
+  select(examiner_name_first, gender)
+
+# joining gender back to the dataset
+applications <- applications %>% 
+  left_join(examiner_names_gender, by = "examiner_name_first")
+
+# cleaning up
+rm(examiner_names)
+rm(examiner_names_gender)
+gc()
+
+```
+
+## Guess the examiner's race
+
+We'll now use package `wru` to estimate likely race of an examiner. Just
+like with gender, we'll get a list of unique names first, only now we
+are using surnames.
+
+```{r race-1}
+library(wru)
+
+examiner_surnames <- applications %>% 
+  select(surname = examiner_name_last) %>% 
+  distinct()
+
+examiner_surnames
+```
+
+We'll follow the instructions for the package outlined here
+<https://github.com/kosukeimai/wru>.
+
+```{r race-2}
+examiner_race <- predict_race(voter.file = examiner_surnames, surname.only = T) %>% 
+  as_tibble()
+
+examiner_race
+```
+
+As you can see, we get probabilities across five broad US Census
+categories: white, black, Hispanic, Asian and other. (Some of you may
+correctly point out that Hispanic is not a race category in the US
+Census, but these are the limitations of this package.)
+
+Our final step here is to pick the race category that has the highest
+probability for each last name and then join the table back to the main
+applications table. See this example for comparing values across
+columns: <https://www.tidyverse.org/blog/2020/04/dplyr-1-0-0-rowwise/>.
+And this one for `case_when()` function:
+<https://dplyr.tidyverse.org/reference/case_when.html>.
+
+```{r race-3}
+examiner_race <- examiner_race %>% 
+  mutate(max_race_p = pmax(pred.asi, pred.bla, pred.his, pred.oth, pred.whi)) %>% 
+  mutate(race = case_when(
+    max_race_p == pred.asi ~ "Asian",
+    max_race_p == pred.bla ~ "black",
+    max_race_p == pred.his ~ "Hispanic",
+    max_race_p == pred.oth ~ "other",
+    max_race_p == pred.whi ~ "white",
+    TRUE ~ NA_character_
+  ))
+
+examiner_race
+```
+
+Let's join the data back to the applications table.
+
+```{r race-4}
+# removing extra columns
+examiner_race <- examiner_race %>% 
+  select(surname,race)
+
+applications <- applications %>% 
+  left_join(examiner_race, by = c("examiner_name_last" = "surname"))
+
+rm(examiner_race)
+rm(examiner_surnames)
+gc()
+```
+
+## Examiner's tenure
+
+To figure out the timespan for which we observe each examiner in the
+applications data, let's find the first and the last observed date for
+each examiner. We'll first get examiner IDs and application dates in a
+separate table, for ease of manipulation. We'll keep examiner ID (the
+field `examiner_id`), and earliest and latest dates for each application
+(`filing_date` and `appl_status_date` respectively). We'll use functions
+in package `lubridate` to work with date and time values.
+
+```{r tenure-1}
+examiner_dates <- applications %>% 
+  select(examiner_id, filing_date, appl_status_date) 
+
+examiner_dates
+```
+
+The dates look inconsistent in terms of formatting. Let's make them
+consistent. We'll create new variables `start_date` and `end_date`.
+
+```{r tenure-2}
+examiner_dates <- examiner_dates %>% 
+  mutate(start_date = ymd(filing_date), end_date = as_date(dmy_hms(appl_status_date)))
+```
+
+Let's now identify the earliest and the latest date for each examiner
+and calculate the difference in days, which is their tenure in the
+organization.
+
+```{r tenure-3}
+examiner_dates <- examiner_dates %>% 
+  group_by(examiner_id) %>% 
+  summarise(
+    earliest_date = min(start_date, na.rm = TRUE), 
+    latest_date = max(end_date, na.rm = TRUE),
+    tenure_days = interval(earliest_date, latest_date) %/% days(1)
+    ) %>% 
+  filter(year(latest_date)<2018)
+
+examiner_dates
+```
+
+Joining back to the applications data.
+
+```{r tenure-4}
+applications <- applications %>% 
+  left_join(examiner_dates, by = "examiner_id")
+
+rm(examiner_dates)
+gc()
+```
+
+
+
+## Pick the two biggest workgroups
+
+
+Check the unique examiner_art_unit
+```{r}
+applications <- applications %>% 
+  mutate(examiner_art_unit3 = stringr::str_sub(examiner_art_unit, 1,3))
+
+applications %>% drop_na(gender, race) %>% 
+  group_by(examiner_art_unit3) %>% count() %>% 
+  arrange(desc(n)) %>% 
+  ggplot(aes(x = n,y = reorder(examiner_art_unit3, n)))+geom_col(fill="darkgreen")+
+  labs(y = "Examiner Group")
+
+```
+Will select group 162 and 179 because they are the biggest
+
+
+Check different statistics per group
+```{r}
+app_filter <- applications %>% 
+  filter(examiner_art_unit3 %in% c("162", "179")) %>% drop_na(gender,race)
+  
+```
+
+
+
+
+```{r}
+p1 <- app_filter %>% filter(examiner_art_unit3==162) %>% 
+  count(race,gender) %>% 
+  ggplot(aes(x=race, y=n, fill=gender))+
+  geom_col()+
+  labs(title="Unit: 162")
+
+p2 <- app_filter %>% filter(examiner_art_unit3==179) %>% 
+  count(race,gender) %>% 
+  ggplot(aes(x=race, y=n, fill=gender))+
+  geom_col()+
+  labs(title="Unit: 179")
+
+gridExtra::grid.arrange(p1,p2)
+
+
+
+```
+Both groups are similar but the unit 179 has a higher proportion of white male
+compared to white female.
+
+
+Quick check on the overall proportion of male/female in both groups
+```{r}
+
+app_filter %>% group_by(examiner_art_unit3, gender) %>% 
+  summarise(n = n()) %>% 
+  mutate(prop = n/sum(n))
+
+```
+
+
+Group 179 is composed of 63% male compared to group 162 composed of 50% male-female
+
+## Make the graph
+### Filter the dataset
+```{r}
+
+# Filter the edges with the application number in our dataset
+un_app_nb = unique(app_filter$application_number)
+edges_filter <- edges %>% filter(application_number %in% un_app_nb)
+
+# Filter our applications with the application number of the edges
+un_edges_nb = unique(edges_filter$application_number)
+app_filter2 <- app_filter %>% filter(application_number %in% un_edges_nb)
+
+```
+
+
+Check if proportions were similar during the time period of interest
+```{r}
+app_filter2 %>% group_by(examiner_art_unit3, gender) %>% 
+  summarise(n = n()) %>% 
+  mutate(prop = n/sum(n))
+
+```
+
+
+Very similar proportions still
+
+
+
+### Creating the nodes and edges
+```{r}
+nodes <- app_filter2 %>% select(examiner_id, application_number, gender, race, examiner_art_unit3, examiner_name_first)
+
+colnames(edges_filter) <- c("application_number", "advice_date", "x", "y")
+
+
+graph <- tbl_graph(edges = edges, nodes=nodes, directed = F)
+
+```
+
+`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
