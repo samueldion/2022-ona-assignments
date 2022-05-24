@@ -9,10 +9,12 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = F)
 
 library(tidyverse)
 library(tidygraph)
+library(ggraph)
+library(igraph)
 library(lubridate)
 library(arrow)
 ```
@@ -37,7 +39,7 @@ library(arrow)
 -   Characterize and discuss the relationship between centrality and
     other examiners' characteristics
 
-2.  Any types of visuals to understand the data. Look for tendencies.
+Any types of visuals to understand the data. Look for tendencies.
 
 <https://github.com/romangalperin/2022-ona-assignments/blob/main/exercises/ex3/exercise3.md>
 
@@ -269,16 +271,16 @@ applications %>% drop_na(gender, race) %>%
 Will select group 162 and 179 because they are the biggest
 
 
-Check different statistics per group
+Filter the applications with the chosen units and filter out the NA gender and race
 ```{r}
 app_filter <- applications %>% 
-  filter(examiner_art_unit3 %in% c("162", "179")) %>% drop_na(gender,race)
+  filter(examiner_art_unit3 %in% c("162", "179")) %>% drop_na(gender, race)
   
 ```
 
 
 
-
+Check different statistics per group
 ```{r}
 p1 <- app_filter %>% filter(examiner_art_unit3==162) %>% 
   count(race,gender) %>% 
@@ -303,7 +305,6 @@ compared to white female.
 
 Quick check on the overall proportion of male/female in both groups
 ```{r}
-
 app_filter %>% group_by(examiner_art_unit3, gender) %>% 
   summarise(n = n()) %>% 
   mutate(prop = n/sum(n))
@@ -316,43 +317,174 @@ Group 179 is composed of 63% male compared to group 162 composed of 50% male-fem
 ## Make the graph
 ### Filter the dataset
 ```{r}
-
-# Filter the edges with the application number in our dataset
+# Filter the edges with the application number in our dataset and examiner_id 
+# with gender and race.
 un_app_nb = unique(app_filter$application_number)
-edges_filter <- edges %>% filter(application_number %in% un_app_nb)
+un_examiner_id = unique(app_filter$examiner_id)
+edges_filter <- edges %>% filter((application_number %in% un_app_nb) & 
+                                   (alter_examiner_id %in% un_examiner_id) & 
+                                   (ego_examiner_id %in% un_examiner_id)) %>%
+    select(ego_examiner_id, alter_examiner_id, application_number, advice_date)
 
-# Filter our applications with the application number of the edges
-un_edges_nb = unique(edges_filter$application_number)
-app_filter2 <- app_filter %>% filter(application_number %in% un_edges_nb)
+# Create nodes file with left join of unique examiner id from edges list
+examiner_id <- unique(c(edges_filter$ego_examiner_id, edges_filter$alter_examiner_id))
+nodes_temp <- data.frame(examiner_id)
+
+# Left join the nodes information
+nodes <- nodes_temp %>% left_join(app_filter %>% distinct(examiner_id, .keep_all=T), 
+                         by = c("examiner_id")) %>% 
+  select(examiner_id, gender, race, examiner_art_unit3, examiner_name_first, examiner_name_last)
+nodes %>% head()
+
+
+
 
 ```
 
+Check if all the edges are listed in the nodes list
+```{r}
+edges_filter[!(edges_filter$ego_examiner_id %in% nodes$examiner_id),]
+edges_filter[!(edges_filter$alter_examiner_id %in% nodes$examiner_id),]
+
+```
 
 Check if proportions were similar during the time period of interest
 ```{r}
-app_filter2 %>% group_by(examiner_art_unit3, gender) %>% 
+nodes %>% group_by(examiner_art_unit3, gender) %>% 
   summarise(n = n()) %>% 
   mutate(prop = n/sum(n))
 
 ```
-
-
-Very similar proportions still
+We have very similar proportions still
 
 
 
 ### Creating the nodes and edges
 ```{r}
-nodes <- app_filter2 %>% select(examiner_id, application_number, gender, race, examiner_art_unit3, examiner_name_first)
-
-colnames(edges_filter) <- c("application_number", "advice_date", "x", "y")
-
-
-graph <- tbl_graph(edges = edges, nodes=nodes, directed = F)
+graph <- igraph::graph_from_data_frame(edges_filter, vertices = nodes, directed = F) %>% as_tbl_graph()
+#graph <- tbl_graph(edges = edges_filter, nodes=nodes, directed = T)
 
 ```
 
-`
+
+#### Plot the results
+```{r}
+autograph(graph)
+```
+
+By Unit
+```{r}
+ggraph(graph, layout = "fr") + 
+	 geom_edge_link(edge_colour = "#A8A8A8", edge_width = 0.3, edge_alpha = 1) + 
+    geom_node_point(aes(fill = examiner_art_unit3), colour = "#000000", size = 3, shape = 21, stroke = 0.3) + 
+	 scale_fill_brewer(palette = "Set1") + 
+	 theme_graph() + 
+	 theme(legend.position = "bottom")+
+  labs(title="Advice Net by Unit")
+```
+
+By Gender
+```{r}
+ggraph(graph, layout = "fr") + 
+	 geom_edge_link(edge_colour = "#A8A8A8", edge_width = 0.3, edge_alpha = 1) + 
+    geom_node_point(aes(fill = gender), colour = "#000000", size = 3, shape = 21, stroke = 0.3) + 
+	 scale_fill_brewer(palette = "Set1") + 
+	 theme_graph() + 
+	 theme(legend.position = "bottom")+
+  labs(title="Advice Net by Gender")
+
+```
+
+
+By Race
+```{r}
+ggraph(graph, layout = "fr") + 
+	 geom_edge_link(edge_colour = "#A8A8A8", edge_width = 0.3, edge_alpha = 1) + 
+    geom_node_point(aes(fill = race), colour = "#000000", size = 3, shape = 21, stroke = 0.3) + 
+	 scale_fill_brewer(palette = "Set1") + 
+	 theme_graph() + 
+	 theme(legend.position = "bottom")+
+  labs(title="Advice Net by Race")
+
+```
+
+### Calculating Centrality Scores
+```{r}
+# Clustering to see patterns (not working for directed graph)
+#V(graph)$clu <- as.character(membership(cluster_louvain(graph)))
+
+# Degree Centrality
+V(graph)$degree <- degree(graph)
+
+# Betweeness centrality
+V(graph)$bet_centrality <- betweenness(graph)
+
+# Closeness centrality
+V(graph)$clo_centrality <- closeness(graph)
+
+
+```
+
+
+### Check the biggest helper centrality
+```{r}
+V(graph)$degree
+
+
+```
+
+Advice net by race and degree centrality
+```{r}
+ggraph(graph, layout = "fr") + 
+	 geom_edge_link(edge_colour = "#A8A8A8", edge_width = 0.3, edge_alpha = 1) + 
+    geom_node_point(aes(fill = race, size = degree), colour = "#000000", shape = 21, stroke = 0.3) + 
+	 scale_fill_brewer(palette = "Set1") + 
+	 theme_graph() + 
+	 theme(legend.position = "bottom")+
+  labs(title="Advice Net by Race and Degree Centrality")
+
+```
+Obviously, we are seeing a stronger average degree centrality for white people 
+compared to the other race.  Could be due because they are more represented in 
+the advice net.
+
+
+
+Advice net by gender and degree centrality
+```{r}
+ggraph(graph, layout = "fr") + 
+	 geom_edge_link(edge_colour = "#A8A8A8", edge_width = 0.3, edge_alpha = 1) + 
+    geom_node_point(aes(fill = gender, size = degree), colour = "#000000", shape = 21, stroke = 0.3) + 
+	 scale_fill_brewer(palette = "Set1") + 
+	 theme_graph() + 
+	 theme(legend.position = "bottom")+
+  labs(title="Advice Net by Race and Degree Centrality")
+
+```
+Even if the distribution is 60-40 in favor of male and female, we can see that 
+in general, men have a higher degree centrality.  The exact reasons could vary
+but it is a clear observation.
+
+
+
+
+
+
+### Analysing with a dataframe
+```{r}
+graph_df <- as_data_frame(graph, what="vertices")
+
+```
+
+
+
+
+
+
+
+
+
+
 
 
 
