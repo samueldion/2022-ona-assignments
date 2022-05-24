@@ -55,8 +55,8 @@ edges from `edges_sample.csv`
 applications <- read_parquet("../../project/app_data_sample.parquet")
 edges <- read_csv("../../project/edges_sample.csv")
 
-applications
-edges
+#applications
+#edges
 ```
 
 
