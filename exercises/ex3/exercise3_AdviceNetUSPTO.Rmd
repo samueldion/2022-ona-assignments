@@ -3,10 +3,10 @@ title: "Exercise 3 - Advice Network at USPTO"
 author: "Samuel"
 date: '2022-05-18'
 output: 
+  github_document: default
   pdf_document: 
     latex_engine: xelatex
     keep_tex: yes
-  github_document: default
 editor_options: 
   markdown: 
     wrap: 72
@@ -266,6 +266,7 @@ applications %>% drop_na(gender, race) %>%
   labs(y = "Examiner Group")
 
 ```
+
 Will select group 162 and 179 because they are the biggest
 
 
@@ -297,6 +298,7 @@ gridExtra::grid.arrange(p1,p2)
 
 
 ```
+
 Both groups are similar but the unit 179 has a higher proportion of white male
 compared to white female.
 
@@ -438,6 +440,7 @@ ggraph(graph, layout = "fr") +
   labs(title="Advice Net by Race and Degree Centrality")
 
 ```
+
 Obviously, we are seeing a stronger average degree centrality for white people 
 compared to the other race.  Could be due because they are more represented in 
 the advice net.
@@ -455,6 +458,7 @@ ggraph(graph, layout = "fr") +
   labs(title="Advice Net by Race and Degree Centrality")
 
 ```
+
 Even if the distribution is 60-40 in favor of male and female, we can see that 
 in general, men seem to have a higher degree centrality.  The exact reason why
 is unknown.
@@ -470,6 +474,7 @@ graph_df %>% arrange(desc(bet_centrality)) %>% head()
 graph_df %>% arrange(desc(degree)) %>% head()
 
 ```
+
 We can see that Muhammad Siddiquee has the highest degree centrality in both units
 selected and David Joy has the best betweeness centrality.  Looking at these numbers, 
 I would say that David Joy seems to have the most request and also being on the
@@ -503,6 +508,7 @@ gridExtra::grid.arrange(p1,p2)
 
 
 ```
+
 Based on our sample size, it's hard to tell if there are any differences by race.
 However, there might be a pattern by gender if we are looking at the white and asian demographic 
 with higher degree centrality median for both groups with a decent sample size.  
@@ -538,6 +544,7 @@ gridExtra::grid.arrange(p1,p2)
 
 
 ```
+
 Suprisingly similar results even after normalizing by the number of tenure days.
 
 
