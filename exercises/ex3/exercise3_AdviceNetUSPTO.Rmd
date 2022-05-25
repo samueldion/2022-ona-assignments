@@ -2,7 +2,11 @@
 title: "Exercise 3 - Advice Network at USPTO"
 author: "Samuel"
 date: '2022-05-18'
-output: html_document
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    keep_tex: yes
+  github_document: default
 editor_options: 
   markdown: 
     wrap: 72
@@ -17,6 +21,7 @@ library(ggraph)
 library(igraph)
 library(lubridate)
 library(arrow)
+library(extrafont)
 ```
 
 ## Instructions
@@ -58,13 +63,6 @@ edges <- read_csv("../../project/edges_sample.csv")
 #applications
 #edges
 ```
-
-
-
-
-
-
-
 
 
 ## Get gender for examiners
@@ -303,7 +301,7 @@ Both groups are similar but the unit 179 has a higher proportion of white male
 compared to white female.
 
 
-Quick check on the overall proportion of male/female in both groups
+Quick check on the overall proportion of male/female advices in both groups
 ```{r}
 app_filter %>% group_by(examiner_art_unit3, gender) %>% 
   summarise(n = n()) %>% 
@@ -312,9 +310,10 @@ app_filter %>% group_by(examiner_art_unit3, gender) %>%
 ```
 
 
-Group 179 is composed of 63% male compared to group 162 composed of 50% male-female
+Group 179 is composed of 63% male compared to group 162 composed of 50% male-female.
+**talking about applications proportions**
 
-## Make the graph
+## Analysing the Advice Network with Graphs
 ### Filter the dataset
 ```{r}
 # Filter the edges with the application number in our dataset and examiner_id 
@@ -333,7 +332,7 @@ nodes_temp <- data.frame(examiner_id)
 # Left join the nodes information
 nodes <- nodes_temp %>% left_join(app_filter %>% distinct(examiner_id, .keep_all=T), 
                          by = c("examiner_id")) %>% 
-  select(examiner_id, gender, race, examiner_art_unit3, examiner_name_first, examiner_name_last)
+  select(examiner_id, gender, race, examiner_art_unit3, examiner_name_first, examiner_name_last, tenure_days)
 nodes %>% head()
 
 
@@ -342,7 +341,7 @@ nodes %>% head()
 ```
 
 Check if all the edges are listed in the nodes list
-```{r}
+```{r, results='hide'}
 edges_filter[!(edges_filter$ego_examiner_id %in% nodes$examiner_id),]
 edges_filter[!(edges_filter$alter_examiner_id %in% nodes$examiner_id),]
 
@@ -355,7 +354,7 @@ nodes %>% group_by(examiner_art_unit3, gender) %>%
   mutate(prop = n/sum(n))
 
 ```
-We have very similar proportions still
+We have very similar proportions still. 
 
 
 
@@ -422,16 +421,11 @@ V(graph)$bet_centrality <- betweenness(graph)
 # Closeness centrality
 V(graph)$clo_centrality <- closeness(graph)
 
+# Eigen Centrality
+V(graph)$eig_centrality <- eigen_centrality(graph)
 
 ```
 
-
-### Check the biggest helper centrality
-```{r}
-V(graph)$degree
-
-
-```
 
 Advice net by race and degree centrality
 ```{r}
@@ -462,44 +456,88 @@ ggraph(graph, layout = "fr") +
 
 ```
 Even if the distribution is 60-40 in favor of male and female, we can see that 
-in general, men have a higher degree centrality.  The exact reasons could vary
-but it is a clear observation.
-
-
-
+in general, men seem to have a higher degree centrality.  The exact reason why
+is unknown.
 
 
 
 ### Analysing with a dataframe
+
+#### Highest centrality for examiner
 ```{r}
 graph_df <- as_data_frame(graph, what="vertices")
+graph_df %>% arrange(desc(bet_centrality)) %>% head()
+graph_df %>% arrange(desc(degree)) %>% head()
 
 ```
+We can see that Muhammad Siddiquee has the highest degree centrality in both units
+selected and David Joy has the best betweeness centrality.  Looking at these numbers, 
+I would say that David Joy seems to have the most request and also being on the
+shortest path between all the people in the network.  He has a very centralized 
+role and I think it makes sense for the context of the advice network.
+
+
+#### Centralities by gender and race
+```{r}
+p1 <- graph_df %>% group_by(gender, race) %>% 
+  summarise(degree_avg = median(degree), count=n()) %>% 
+  ggplot(aes(y=degree_avg, x = race, group=gender, fill=gender)) +
+  geom_bar(stat="identity", position = "dodge")+
+  geom_text(aes(label=count), vjust=1, position = position_dodge(width=0.9))+
+  labs(title="Median Degree Centrality by Gender and Race",
+       y="Degree Centrality",
+       subtitle = "Number indicates the sample size to compute the median")
+
+
+p2 <- graph_df %>% group_by(gender, race) %>% 
+  summarise(degree_avg = median(bet_centrality), count=n()) %>% 
+  ggplot(aes(y=degree_avg, x = race, group=gender, fill=gender)) +
+  geom_bar(stat="identity", position = "dodge")+
+  geom_text(aes(label=count), vjust=1, position = position_dodge(width=0.9))+
+  labs(title="Median Betweeness Centrality by Gender and Race",
+       y="Betweeness Centrality",
+       subtitle = "Number indicates the sample size to compute the median")
+
+gridExtra::grid.arrange(p1,p2)
 
 
 
+```
+Based on our sample size, it's hard to tell if there are any differences by race.
+However, there might be a pattern by gender if we are looking at the white and asian demographic 
+with higher degree centrality median for both groups with a decent sample size.  
+We are seeing a similar pattern for the betweeness centrality where there is a clear
+distinction by gender.  Even maybe by race but hard to tell.
+
+
+#### Centrality normalized by tenure days
+```{r}
+p1 <- graph_df %>% mutate(degree_norm = degree/(tenure_days+1)*365) %>%
+  group_by(gender, race) %>% 
+  summarise(degree_med = median(degree_norm, na.rm = T), count=n()) %>% 
+  ggplot(aes(y=degree_med, x = race, group=gender, fill=gender)) +
+  geom_bar(stat="identity", position = "dodge")+
+  geom_text(aes(label=count), vjust=1, position = position_dodge(width=0.9))+
+  labs(title="Median Degree Centrality by Gender and Race",
+       y="Degree Centrality",
+       subtitle = "Number indicates the sample size to compute the median")
+
+
+p2 <- graph_df %>% mutate(degree_norm = bet_centrality/(tenure_days+1)*365) %>%
+  group_by(gender, race) %>% 
+  summarise(degree_med = median(degree_norm, na.rm = T), count=n()) %>% 
+  ggplot(aes(y=degree_med, x = race, group=gender, fill=gender)) +
+  geom_bar(stat="identity", position = "dodge")+
+  geom_text(aes(label=count), vjust=1, position = position_dodge(width=0.9))+
+  labs(title="Median Betweeness Centrality Norm by Gender and Race",
+       y="Betweeness Centrality",
+       subtitle = "Number indicates the sample size to compute the median")
+
+gridExtra::grid.arrange(p1,p2)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```
+Suprisingly similar results even after normalizing by the number of tenure days.
 
 
