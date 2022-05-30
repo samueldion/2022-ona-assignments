@@ -1,0 +1,190 @@
+---
+title: "Exercise 4 - Centrality & Efficiency"
+author: "Samuel"
+date: '2022-05-18'
+output: 
+  pdf_document: 
+    latex_engine: xelatex
+    keep_tex: yes
+  github_document: default
+editor_options: 
+    markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(lubridate)
+library(knitr)
+
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+# Import data from exercise 
+The applications that are filtered and the nodes with their centrality scores
+
+```{r}
+app <- read.csv("../ex3/applications.csv")
+exam <- read.csv("../ex3/graph_df.csv")
+
+
+```
+
+```{r}
+app %>% head()
+
+```
+
+
+# Calculate the application processing time
+
+Abandon Date and Issue Date
+```{r}
+app %>% select(abandon_date,patent_issue_date) %>% head()
+```
+
+```{r}
+app <- app %>% 
+  filter(!(is.na(abandon_date) & is.na(patent_issue_date))) %>% 
+  mutate(app_proc_time = ifelse(
+  is.na(abandon_date), as.Date(patent_issue_date)-as.Date(filing_date), as.Date(abandon_date)-as.Date(filing_date)
+) )
+
+
+
+```
+
+# Combine applications data with the nodes
+```{r}
+df <- app %>% left_join(exam %>% select(name, degree, bet_centrality, clo_centrality), 
+                        by=c("examiner_id"="name")) %>% 
+  drop_na(degree) %>% filter(app_proc_time>0 & race!="other")  
+# some of the examiner weren't in the edges data file so their centrality
+# was not calculated
+
+df$examiner_art_unit3 <- as.factor(df$examiner_art_unit3)
+df$uspc_class <- as.factor(df$uspc_class)
+df$gender <- as.factor(df$gender)
+df$race <- as.factor(df$race)
+
+
+kable(df %>% head())
+
+```
+
+
+# Create linear regression for the processing time
+
+## Simple Regression Model
+
+```{r}
+lm.fit <- lm(data=df, app_proc_time~degree+bet_centrality+clo_centrality)
+summary(lm.fit)
+
+
+```
+Using only the data from the centrality, we can see the statistical results.
+Someone with a higher degree centrality will have longer processing time.  
+Because of the data, that is someone that asks or has been asks a lot of 
+questions.  Betweeness centrality is also causing higher processing time and 
+only the closeness centrality is not.  So having a higher closeness centrality
+reduces the amount of processing time.
+
+
+Residuals plot
+```{r}
+lm.res = data.frame(resid(lm.fit))
+ggplot(data=lm.res, aes(sample=resid.lm.fit.))+stat_qq()+stat_qq_line(col="blue")
+
+```
+This tells me that I should use a log transformation of the processing time.
+
+
+
+
+## Regression Model with Race and Gender
+
+```{r}
+lm2.fit <- lm(data=df, log(app_proc_time)~degree+bet_centrality+clo_centrality
+              )
+
+summary(lm2.fit)
+
+```
+
+Residuals plot
+```{r}
+lm2.res = data.frame(resid(lm2.fit))
+ggplot(data=lm2.res, aes(sample=resid.lm2.fit.))+stat_qq()+stat_qq_line(col="blue")
+
+```
+Using the log transformation we can see that it is a lot better.
+
+
+
+## Regression with Gender and Race interaction
+
+```{r}
+lm3.fit <- lm(data=df, log(app_proc_time)~degree+bet_centrality+clo_centrality+
+                gender+race + gender*clo_centrality + race*clo_centrality+
+                gender*degree + race*degree + gender*race + examiner_art_unit3
+              )
+
+summary(lm3.fit)
+```
+Interestingly, the gender doesn't impact the processing time.  The Race as an 
+impact but is very minor and negligible.  In this example, the unit three digit
+number is added makes a significant difference.
+The coefficients are hard to estimate because of the processing time that is 
+reduced on a logarithmic base.
+
+
+
+
+Residuals plot
+```{r}
+lm3.res = data.frame(resid(lm3.fit))
+ggplot(data=lm3.res, aes(sample=resid.lm3.fit.))+stat_qq()+stat_qq_line(col="blue")
+
+```
+
+
+## Plotting the results of the most recent linear model
+
+```{r}
+pred <- exp(predict(lm3.fit, newdata=df))
+
+
+
+# Plot
+ggplot(data=df, aes(x=app_proc_time))+
+  geom_point(aes(y=pred))+
+  geom_abline(col="blue")+
+  labs(title="Terrible Predictions for the Patent Processing Time")
+
+```
+
+^^ Predictions are still pretty bad so I am not sure how those findings are 
+relevant to the USPTO ^^.  Some of the points discussed make sense but we
+are not able to explain the application processing time very precisely meaning
+that they are a lot of external factors that we haven't identified.
+
+Overall, we are seing that the closeness centrality (being as close as possible
+to most of the requests in this case) is very helpful in reducing processing 
+time.  In a sense it's logical because your are someone that probably plays a 
+very central strategic role and thus have more experience to solve problem 
+faster.  Only the degree centrality is too ambiguis and can mean that you are
+sending or receiving a lot of requests and what we are seing is that it's not 
+good in terms of processing time.
+
+The problem with this data, is that we are assuming that the examiner is the 
+owner of that patent but it's not necessarily true from my understanding which
+is not very representative and doesn't represent the processing time well 
+related to the centrality scores of the examiner.
+
+
+
+
