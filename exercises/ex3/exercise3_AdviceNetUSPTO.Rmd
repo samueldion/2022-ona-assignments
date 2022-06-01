@@ -555,8 +555,8 @@ Surprisingly similar results even after normalizing by the number of tenure days
 
 # Export Data for Exercise 4
 ```{r}
-write.csv(graph_df[,1:10], "graph_df.csv", row.names = F)
-write.csv(app_filter, "applications.csv", row.names = F)
+#write.csv(graph_df[,1:10], "graph_df.csv", row.names = F)
+#write.csv(app_filter, "applications.csv", row.names = F)
 
 ```
 
@@ -564,14 +564,96 @@ write.csv(app_filter, "applications.csv", row.names = F)
 
 
 
+***
+# EXTRA FOR THE GROUP PROJECT
+
+## Prepare the data
+Create edges attributes to know if it's multi-racial request or not
+```{r}
+edges_filter2 <- edges_filter%>% 
+  left_join(nodes %>% select(examiner_id, race, gender), by=c("ego_examiner_id"="examiner_id")) %>% 
+  left_join(nodes %>% select(examiner_id, race, gender), by=c("alter_examiner_id"="examiner_id")) %>% 
+  mutate(race_advice = ifelse(race.x == race.y, "same", "diff"),
+         gender_advice = ifelse(gender.x == gender.y, "same", "diff"))
+
+edges_filter %>% head()
+
+```
+
+Create a new graph
+```{r}
+graph2 <- graph_from_data_frame(edges_filter2, nodes, directed = T) %>% as_tbl_graph()
+
+```
+
+Recalculate the different centrality scores
+```{r}
+# Degree Centrality
+V(graph2)$degree_out <- degree(graph2, mode="out")
+V(graph2)$degree_in <- degree(graph2, mode="in")
+V(graph2)$degree_all <- degree(graph2, mode="total")
+
+# Betweeness centrality
+V(graph2)$bet_centrality <- betweenness(graph2)
+
+# Closeness centrality
+V(graph2)$clo_centrality <- closeness(graph2)
+
+# Eigen Centrality
+V(graph2)$eig_centrality <- eigen_centrality(graph2)
+
+
+```
+
+
+Calculate the centrality on type of request
+```{r}
+graph2 <- graph2 %>% 
+  activate(nodes) %>% 
+  mutate(centrality_same_race = centrality_degree(weights = as.numeric(.E()$race_advice == "same"), mode="out"),
+         centrality_diff_race = centrality_degree(weights = as.numeric(.E()$race_advice == "diff"), mode="out"),
+         centrality_same_gender = centrality_degree(weights = as.numeric(.E()$gender_advice == "same"), mode="out"),
+         centrality_diff_gender = centrality_degree(weights = as.numeric(.E()$gender_advice == "diff"), mode="out"))  # requesting help from white person
+
+```
 
 
 
+## Visualize the results
+### Baseline
+```{r}
+edges_filter2 %>% group_by(race.y) %>% summarize(n=n()) %>% mutate(p=n/sum(n))
+edges_filter2 %>% group_by(gender.y) %>% summarize(n = n()) %>% mutate(p = n/sum(n))
+
+```
 
 
 
+### Divide by different characteristics
+```{r}
+graph2_df <- as_data_frame(graph2, what="vertices")
+
+# Race Requests
+graph2_df %>% 
+  group_by(race) %>% 
+  summarise(mean_out = mean(degree_out),
+            r_same_race = mean(centrality_same_race)/mean_out,
+            r_diff_race = mean(centrality_diff_race)/mean_out)
+
+# Gender Requests
+graph2_df %>% 
+  group_by(gender) %>% 
+  summarise(mean_out = mean(degree_out),
+            r_same_gender = mean(centrality_same_gender)/mean_out,
+            r_diff_gender = mean(centrality_diff_gender)/mean_out)
+
+```
 
 
+What we can see here is that blacks represents only 1% of the output requests, 
+but blacks make 20% of their requests to same race individuals.  We see similar
+phenomenon where each groups have a tendency to make more requests to their same
+group.
 
 
 
