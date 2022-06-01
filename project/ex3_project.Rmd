@@ -580,7 +580,7 @@ Recalculate the different centrality scores
 # Degree Centrality
 V(graph2)$degree_out <- degree(graph2, mode="out")
 V(graph2)$degree_in <- degree(graph2, mode="in")
-V(graph2)$degree_all <- degree(graph2, mode="total")
+V(graph2)$degree_all <- degree(graph2, mode="all")
 
 # Betweeness centrality
 V(graph2)$bet_centrality <- betweenness(graph2)
